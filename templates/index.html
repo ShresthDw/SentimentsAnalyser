@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentiment Analysis App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #result {
+            margin-top: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #555;
+            min-height: 25px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tweet Emotion Analyzer</h1>
+        <textarea id="text-input" placeholder="Enter text here..."></textarea>
+        <button onclick="analyzeSentiment()">Analyze</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function analyzeSentiment() {
+            const textInput = document.getElementById('text-input').value;
+            const resultDiv = document.getElementById('result');
+
+            if (!textInput) {
+                resultDiv.innerText = 'Please enter some text to analyze.';
+                resultDiv.style.color = '#dc3545';
+                return;
+            }
+
+            // Replace with your actual Heroku app URL
+            const apiUrl = 'https://my-sentiment-api.herokuapp.com/predict';
+
+            try {
+                resultDiv.innerText = 'Analyzing...';
+                resultDiv.style.color = '#007bff';
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: textInput })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    const sentiment = data.predicted_emotion;
+                    const confidence = (data.confidence * 100).toFixed(2);
+                    resultDiv.innerText = `Prediction: ${sentiment.toUpperCase()} (Confidence: ${confidence}%)`;
+
+                    if (sentiment === 'joy' || sentiment === 'love' || sentiment === 'surprise') {
+                        resultDiv.style.color = '#28a745'; // Green
+                    } else if (sentiment === 'anger' || sentiment === 'sadness' || sentiment === 'fear') {
+                        resultDiv.style.color = '#dc3545'; // Red
+                    } else {
+                        resultDiv.style.color = '#ffc107'; // Yellow
+                    }
+                } else {
+                    resultDiv.innerText = `Error: ${data.error}`;
+                    resultDiv.style.color = '#dc3545';
+                }
+
+            } catch (error) {
+                resultDiv.innerText = `Error connecting to API: ${error.message}`;
+                resultDiv.style.color = '#dc3545';
+            }
+        }
+    </script>
+</body>
+</html>
