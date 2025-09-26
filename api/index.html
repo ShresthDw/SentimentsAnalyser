@@ -79,13 +79,14 @@
                 return;
             }
 
-            // Replace with your actual Heroku app URL
-            const apiUrl = 'https://my-sentiment-api.herokuapp.com/predict';
+            // This is the Vercel-specific change.
+            // It uses a relative path because the front-end and API are on the same domain.
+            const apiUrl = '/predict';
 
             try {
                 resultDiv.innerText = 'Analyzing...';
                 resultDiv.style.color = '#007bff';
-
+                
                 const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {

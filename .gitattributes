@@ -1,2 +1,0 @@
-models_folder/*.joblib filter=lfs diff=lfs merge=lfs -text
-models_folder/random_forest_model.joblib filter=lfs diff=lfs merge=lfs -text

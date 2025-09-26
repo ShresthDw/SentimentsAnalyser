@@ -126,6 +126,8 @@ def load_best_model_for_api():
 
     print("Failed to load a working model or components. The API will not function.")
 
+load_best_model_for_api()
+
 @app.route('/')
 def home():
     return render_template('index.html')
@@ -145,8 +147,3 @@ def predict():
         return jsonify(prediction_result), 200
     else:
         return jsonify({'error': prediction_result}), 500
-
-if __name__ == '__main__':
-    load_best_model_for_api()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
