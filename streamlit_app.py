@@ -268,17 +268,14 @@ class ModelPredictor:
         try:
             vectorized_text = components.vectorizer.transform([processed_text])
             
-            # Check for predict_proba availability (SVC needs probability=True, others generally have it)
             if hasattr(model_object, 'predict_proba') and (model_name != 'svm' or (hasattr(model_object, 'probability') and model_object.probability)):
                 prediction_proba = model_object.predict_proba(vectorized_text)[0]
                 predicted_label_index = np.argmax(prediction_proba)
                 confidence = prediction_proba[predicted_label_index]
             else:
-                # Fallback for models without probability or if proba=False was used
                 predicted_label_index = model_object.predict(vectorized_text)[0]
-                # Cannot provide probabilities or confidence
                 prediction_proba = np.zeros(len(components.label_encoder.classes_))
-                confidence = 1.0 # Default to max confidence
+                confidence = 1.0 
                 prediction_proba[predicted_label_index] = confidence
 
             predicted_emotion = components.label_encoder.inverse_transform([predicted_label_index])[0]
@@ -294,7 +291,6 @@ class ModelPredictor:
                 'probabilities': probabilities
             }
         except Exception as e:
-            # This is the prediction failure trap
             return f"Error during {model_name} prediction: {e}"
 
 # --- EVALUATION AND VISUALIZATION ---
@@ -584,7 +580,6 @@ def get_emotion_emoji(emotion):
         'joy': '😊', 'love': '❤️', 'surprise': '😲', 
         'anger': '😠', 'sadness': '😢', 'fear': '😨'
     }
-    # Ensure a default is returned if the key is bad (e.g., if an error string gets passed)
     return emoji_map.get(str(emotion).lower(), '🤔')
 
 # --- CACHING AND SESSION STATE ---
@@ -699,7 +694,6 @@ def ui_analysis_page():
 
     model_options = {name.upper(): name for name in available_models.keys()}
     
-    # Determine the 'best model' for default selection
     best_model_name_key = "SVM"
     if st.session_state.latest_evaluation_results:
         best_name, _ = DatasetAnalyzer.determine_best_model(st.session_state.latest_evaluation_results, metric='weighted_f1')
@@ -722,53 +716,54 @@ def ui_analysis_page():
         placeholder="e.g., 'I am so thrilled about this new opportunity!'"
     )
     
-    if st.button("🔍 Analyze Emotion", type="primary") and user_input.strip():
-        with st.spinner(f'Analyzing with {model_name.upper()}...'):
-            model_object = st.session_state.active_models[model_name]
-            components = st.session_state.active_components
-            
-            result = ModelPredictor.predict_emotion(
-                user_input, 
-                model_name,
-                model_object, 
-                components
-            )
-            
-            # CRITICAL: Check if the result is the expected dictionary structure
-            if isinstance(result, dict) and 'predicted_emotion' in result:
-                emotion = result['predicted_emotion']
-                confidence = result['confidence']
-                probabilities = result['probabilities']
+    # We use a single button for the primary action. The empty input check is handled below.
+    if st.button("🔍 Analyze Emotion", type="primary", key="analyze_main"):
+        if user_input.strip():
+            with st.spinner(f'Analyzing with {model_name.upper()}...'):
+                model_object = st.session_state.active_models[model_name]
+                components = st.session_state.active_components
                 
-                st.markdown("---")
-                col_res, col_prob = st.columns([1, 2])
+                result = ModelPredictor.predict_emotion(
+                    user_input, 
+                    model_name,
+                    model_object, 
+                    components
+                )
                 
-                with col_res:
-                    st.subheader("🎯 Prediction Result")
-                    emoji = get_emotion_emoji(emotion)
-                    color = get_emotion_color(emotion)
-                    st.markdown(
-                        f"<h2 style='color: {color}; text-align: center;'>"
-                        f"{emoji} {emotion.upper()}</h2>",
-                        unsafe_allow_html=True
-                    )
-                    st.markdown(
-                        f"<p style='text-align: center; font-size: 18px;'>"
-                        f"Confidence: **{confidence:.1%}**</p>",
-                        unsafe_allow_html=True
-                    )
+                # CRITICAL FIX: Ensure the result is the expected dictionary before accessing keys
+                if isinstance(result, dict) and 'predicted_emotion' in result:
+                    emotion = result['predicted_emotion']
+                    confidence = result['confidence']
+                    probabilities = result['probabilities']
                     
-                with col_prob:
-                    st.subheader("📊 Detailed Probabilities")
-                    sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
-                    for emotion_name, prob in sorted_probs:
-                        st.write(f"{get_emotion_emoji(emotion_name)} **{emotion_name.title()}**: {prob:.1%}")
-                        st.progress(prob)
-            else:
-                # If result is an error string, display it
-                st.error(f"Prediction failed: {result}")
-    elif st.button("🔍 Analyze Emotion") and not user_input.strip():
-        st.warning("⚠️ Please enter some text to analyze!")
+                    st.markdown("---")
+                    col_res, col_prob = st.columns([1, 2])
+                    
+                    with col_res:
+                        st.subheader("🎯 Prediction Result")
+                        emoji = get_emotion_emoji(emotion)
+                        color = get_emotion_color(emotion)
+                        st.markdown(
+                            f"<h2 style='color: {color}; text-align: center;'>"
+                            f"{emoji} {emotion.upper()}</h2>",
+                            unsafe_allow_html=True
+                        )
+                        st.markdown(
+                            f"<p style='text-align: center; font-size: 18px;'>"
+                            f"Confidence: **{confidence:.1%}**</p>",
+                            unsafe_allow_html=True
+                        )
+                        
+                    with col_prob:
+                        st.subheader("📊 Detailed Probabilities")
+                        sorted_probs = sorted(probabilities.items(), key=lambda x: x[1], reverse=True)
+                        for emotion_name, prob in sorted_probs:
+                            st.write(f"{get_emotion_emoji(emotion_name)} **{emotion_name.title()}**: {prob:.1%}")
+                            st.progress(prob)
+                else:
+                    st.error(f"Prediction failed: {result}")
+        else:
+            st.warning("⚠️ Please enter some text to analyze!")
 
 def ui_performance_page():
     st.header("2. Performance Comparison of Models 📊")
@@ -836,7 +831,7 @@ def ui_performance_page():
 
     with tab_time:
         st.subheader("Inference Time Comparison")
-        ResultsVisualizer.plot_metrics_comparison_bar(eval_results) # Reusing plot_metrics_comparison for inference time
+        ResultsVisualizer.plot_metrics_comparison_bar(eval_results)
 
 def ui_dataset_analysis_page():
     st.header("3. Analyze Dataset 📈")
@@ -854,9 +849,12 @@ def ui_dataset_analysis_page():
     def run_sentiment_analysis(df_input):
         return SentimentAnalyzer.add_sentiment_analysis_to_df(df_input.copy(), text_column='text')
             
-    if Config.TEST_CSV_PATH not in st.session_state.sentiment_df or 'sentiment' not in st.session_state.sentiment_df[Config.TEST_CSV_PATH].columns:
+    sentiment_data_loaded = (Config.TEST_CSV_PATH in st.session_state.sentiment_df and 
+                             'sentiment' in st.session_state.sentiment_df[Config.TEST_CSV_PATH].columns)
+    
+    if not sentiment_data_loaded:
         st.subheader("Sentiment Pre-analysis")
-        if st.button("Run TextBlob Sentiment Analysis (Slow)"):
+        if st.button("Run TextBlob Sentiment Analysis (Slow)", key="run_sentiment"):
             st.session_state.sentiment_df[Config.TEST_CSV_PATH] = run_sentiment_analysis(df)
             st.success("Sentiment analysis complete and cached.")
             st.rerun()
@@ -984,6 +982,11 @@ def ui_save_results_page():
                     'Matthews_Corr': metrics.get('matthews_corrcoef'), 'Cohens_Kappa': metrics.get('cohens_kappa'),
                     'Inference_Time_s': result.get('inference_time')})
 
+            # FIX APPLIED HERE: The DataFrame creation is now conditional on summary_data not being empty
+            if not summary_data:
+                 st.warning("No metrics were successfully calculated; nothing to save.")
+                 return
+                 
             summary_df = pd.DataFrame(summary_data)
             summary_path = f"{Config.REPORT_DIR}/model_evaluation_summary_{timestamp}.csv"
             summary_df.to_csv(summary_path, index=False)
