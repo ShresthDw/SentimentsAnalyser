@@ -22,7 +22,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 # --- CONFIGURATION ---
 class Config:
-    # Paths updated to reflect the 'Datasets' folder structure
+    # Paths updated for the 'Datasets' folder structure in your GitHub repo
     MODEL_DIR = 'models_folder'
     NEW_MODEL_DIR = 'newly_trained_models'
     REPORT_DIR = 'model_reports'
@@ -75,23 +75,20 @@ class SentimentAnalyzer:
 
     @staticmethod
     def add_sentiment_analysis_to_df(df, text_column='text'):
-        # st.info("Performing sentiment analysis on text...")
         if text_column not in df.columns:
             st.error(f"Warning: Text column '{text_column}' not found for sentiment analysis.")
             return df
         
-        # Preprocess text before feeding to TextBlob
         df['sentiment_processed_text'] = df[text_column].apply(lambda x: TextPreprocessor.preprocess_text(x, remove_emojis_flag=True))
         df['sentiment'] = SentimentAnalyzer.analyze_sentiment_batch(df['sentiment_processed_text'])
         df.drop(columns=['sentiment_processed_text'], inplace=True, errors='ignore')
-        # st.success("Sentiment analysis added to DataFrame.")
         return df
 
 class DataLoader:
     @staticmethod
     def _load_and_clean_data(csv_path, dataset_name="dataset"):
         if not os.path.exists(csv_path):
-             st.warning(f"Data file '{csv_path}' not found. Cannot perform {dataset_name} operations.")
+             st.warning(f"Data file '{csv_path}' not found. Cannot perform {dataset_name} operations. Ensure the 'Datasets' folder exists and contains '{os.path.basename(csv_path)}'.")
              return None
 
         try:
@@ -271,14 +268,17 @@ class ModelPredictor:
         try:
             vectorized_text = components.vectorizer.transform([processed_text])
             
-            if hasattr(model_object, 'predict_proba') and model_name not in ['svm', 'random_forest'] or (hasattr(model_object, 'probability') and model_object.probability):
+            # Check for predict_proba availability (SVC needs probability=True, others generally have it)
+            if hasattr(model_object, 'predict_proba') and (model_name != 'svm' or (hasattr(model_object, 'probability') and model_object.probability)):
                 prediction_proba = model_object.predict_proba(vectorized_text)[0]
                 predicted_label_index = np.argmax(prediction_proba)
                 confidence = prediction_proba[predicted_label_index]
             else:
+                # Fallback for models without probability or if proba=False was used
                 predicted_label_index = model_object.predict(vectorized_text)[0]
+                # Cannot provide probabilities or confidence
                 prediction_proba = np.zeros(len(components.label_encoder.classes_))
-                confidence = 1.0 
+                confidence = 1.0 # Default to max confidence
                 prediction_proba[predicted_label_index] = confidence
 
             predicted_emotion = components.label_encoder.inverse_transform([predicted_label_index])[0]
@@ -294,13 +294,12 @@ class ModelPredictor:
                 'probabilities': probabilities
             }
         except Exception as e:
-            st.error(f"Prediction error for {model_name}: {e}")
-            return f"Error during prediction: {e}"
+            # This is the prediction failure trap
+            return f"Error during {model_name} prediction: {e}"
 
 # --- EVALUATION AND VISUALIZATION ---
 
 class ModelEvaluator:
-    # ... (Keep ModelEvaluator, calculate_all_metrics methods as defined above) ...
     def __init__(self, current_active_models: dict, current_active_components: ModelComponents):
         self.active_models = current_active_models
         self.active_components = current_active_components
@@ -390,7 +389,6 @@ class ModelEvaluator:
 
 
 class ResultsVisualizer:
-    # ... (Keep ResultsVisualizer methods as defined above) ...
     @staticmethod
     def plot_confusion_matrix(y_true_encoded, y_pred_encoded, class_names, model_name):
         if not class_names: return
@@ -474,7 +472,6 @@ class ResultsVisualizer:
             plt.close(fig)
 
 class DatasetAnalyzer:
-    # ... (Keep DatasetAnalyzer methods as defined above) ...
     @staticmethod
     def show_dataset_stats(df):
         if df is None: st.warning("No dataset loaded."); return
@@ -572,6 +569,23 @@ class DatasetAnalyzer:
             return best_model_name, evaluation_results[best_model_name]
         st.warning(f"Could not determine best model based on {metric}.")
         return None, None
+
+# --- STREAMLIT UI COMPONENTS ---
+
+def get_emotion_color(emotion):
+    color_map = {
+        'joy': '#28a745', 'love': '#ff69b4', 'surprise': '#ffc107', 
+        'anger': '#dc3545', 'sadness': '#6c757d', 'fear': '#fd7e14'
+    }
+    return color_map.get(emotion.lower(), '#007bff')
+
+def get_emotion_emoji(emotion):
+    emoji_map = {
+        'joy': '😊', 'love': '❤️', 'surprise': '😲', 
+        'anger': '😠', 'sadness': '😢', 'fear': '😨'
+    }
+    # Ensure a default is returned if the key is bad (e.g., if an error string gets passed)
+    return emoji_map.get(str(emotion).lower(), '🤔')
 
 # --- CACHING AND SESSION STATE ---
 
@@ -710,14 +724,18 @@ def ui_analysis_page():
     
     if st.button("🔍 Analyze Emotion", type="primary") and user_input.strip():
         with st.spinner(f'Analyzing with {model_name.upper()}...'):
+            model_object = st.session_state.active_models[model_name]
+            components = st.session_state.active_components
+            
             result = ModelPredictor.predict_emotion(
                 user_input, 
                 model_name,
-                st.session_state.active_models[model_name], 
-                st.session_state.active_components
+                model_object, 
+                components
             )
             
-            if isinstance(result, dict):
+            # CRITICAL: Check if the result is the expected dictionary structure
+            if isinstance(result, dict) and 'predicted_emotion' in result:
                 emotion = result['predicted_emotion']
                 confidence = result['confidence']
                 probabilities = result['probabilities']
@@ -747,6 +765,7 @@ def ui_analysis_page():
                         st.write(f"{get_emotion_emoji(emotion_name)} **{emotion_name.title()}**: {prob:.1%}")
                         st.progress(prob)
             else:
+                # If result is an error string, display it
                 st.error(f"Prediction failed: {result}")
     elif st.button("🔍 Analyze Emotion") and not user_input.strip():
         st.warning("⚠️ Please enter some text to analyze!")
@@ -769,7 +788,7 @@ def ui_performance_page():
         evaluator = ModelEvaluator(st.session_state.active_models, st.session_state.active_components)
         results = evaluator.evaluate_all_active_models(st.session_state.test_df)
         st.session_state.latest_evaluation_results = results
-        st.rerun() # Rerun to ensure fresh metrics display
+        st.rerun()
     
     eval_results = st.session_state.latest_evaluation_results
     
@@ -817,7 +836,7 @@ def ui_performance_page():
 
     with tab_time:
         st.subheader("Inference Time Comparison")
-        ResultsVisualizer.plot_inference_time_comparison(eval_results)
+        ResultsVisualizer.plot_metrics_comparison_bar(eval_results) # Reusing plot_metrics_comparison for inference time
 
 def ui_dataset_analysis_page():
     st.header("3. Analyze Dataset 📈")
@@ -835,18 +854,17 @@ def ui_dataset_analysis_page():
     def run_sentiment_analysis(df_input):
         return SentimentAnalyzer.add_sentiment_analysis_to_df(df_input.copy(), text_column='text')
             
-    if Config.TEST_CSV_PATH not in st.session_state.sentiment_df and 'sentiment' not in df.columns:
+    if Config.TEST_CSV_PATH not in st.session_state.sentiment_df or 'sentiment' not in st.session_state.sentiment_df[Config.TEST_CSV_PATH].columns:
         st.subheader("Sentiment Pre-analysis")
         if st.button("Run TextBlob Sentiment Analysis (Slow)"):
             st.session_state.sentiment_df[Config.TEST_CSV_PATH] = run_sentiment_analysis(df)
-            df = st.session_state.sentiment_df[Config.TEST_CSV_PATH]
             st.success("Sentiment analysis complete and cached.")
+            st.rerun()
         else:
             st.info("Click the button to run sentiment analysis using TextBlob.")
             return
 
-    if Config.TEST_CSV_PATH in st.session_state.sentiment_df:
-        df = st.session_state.sentiment_df[Config.TEST_CSV_PATH]
+    df = st.session_state.sentiment_df[Config.TEST_CSV_PATH]
 
     st.markdown("---")
 
@@ -870,10 +888,6 @@ def ui_dataset_analysis_page():
             ResultsVisualizer.plot_emotion_distribution_bar(df)
 
     with tab_sentiment:
-        if 'sentiment' not in df.columns:
-            st.warning("Sentiment analysis data is not available.")
-            return
-
         st.subheader("Overall Sentiment Distribution")
         DatasetAnalyzer.show_sentiment_distribution(df)
         
@@ -916,6 +930,7 @@ def ui_training_page():
                 st.session_state.active_components = train_results['fitted_components']
                 st.session_state.active_models = train_results['model_objects'] 
                 st.session_state.latest_evaluation_results = {}
+                st.success("Training complete! New models are now active.")
 
     elif train_option == "Train Specific Model":
         model_map_train = {'Naive Bayes': 'naive_bayes', 'Logistic Regression': 'logistic_regression', 
@@ -939,6 +954,7 @@ def ui_training_page():
                     st.session_state.active_components = training_components
                     st.session_state.active_models[model_key] = trained_model_obj
                     st.session_state.latest_evaluation_results = {}
+                    st.success(f"Training for {selected_model_name} complete! Model is now active.")
 
 def ui_save_results_page():
     st.header("5. Save Evaluation Results 💾")
