@@ -1,27 +1,29 @@
 import os
 import re
-import joblib
-from flask import Flask, request, jsonify, render_template
-import numpy as np
 
-# --- 1. CONFIGURATION ---
+import joblib
+import numpy as np
+from flask import Flask, jsonify, request
+
+
 class Config:
     EMOTIONS = ['anger', 'fear', 'joy', 'love', 'sadness', 'surprise']
-    MODEL_DIR = 'models_folder'
+    ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    MODEL_DIR = os.path.join(ROOT_DIR, 'models_folder')
 
-# --- 2. CORE UTILITIES ---
+
 class TextPreprocessor:
     @staticmethod
     def remove_emojis(text):
         emoji_pattern = re.compile(
-            "["
-            u"\U0001F600-\U0001F64F"
-            u"\U0001F300-\U0001F5FF"
-            u"\U0001F680-\U0001F6FF"
-            u"\U0001F1E0-\U0001F1FF"
-            u"\U00002702-\U000027B0"
-            u"\U000024C2-\U0001F251"
-            "]+",
+            '['
+            u'\U0001F600-\U0001F64F'
+            u'\U0001F300-\U0001F5FF'
+            u'\U0001F680-\U0001F6FF'
+            u'\U0001F1E0-\U0001F1FF'
+            u'\U00002702-\U000027B0'
+            u'\U000024C2-\U0001F251'
+            ']+',
             flags=re.UNICODE,
         )
         return emoji_pattern.sub(r'', text)
@@ -29,11 +31,12 @@ class TextPreprocessor:
     @staticmethod
     def preprocess_text(text, remove_emojis_flag=True):
         if not isinstance(text, str):
-            return ""
+            return ''
         text = text.lower()
         if remove_emojis_flag:
             text = TextPreprocessor.remove_emojis(text)
         return text
+
 
 class ModelComponents:
     def __init__(self):
@@ -53,14 +56,15 @@ class ModelComponents:
             self.vectorizer = joblib.load(vectorizer_path)
             self.label_encoder = joblib.load(encoder_path)
             self.are_fitted = True
-            print(f"Components loaded successfully from {directory}")
+            print(f'Components loaded successfully from {directory}')
             return True
         except FileNotFoundError:
-            print(f"Warning: Component files not found in {directory}")
+            print(f'Warning: Component files not found in {directory}')
             return False
-        except Exception as e:
-            print(f"Error loading components from {directory}: {e}")
+        except Exception as error:
+            print(f'Error loading components from {directory}: {error}')
             return False
+
 
 class ModelLoader:
     @staticmethod
@@ -68,24 +72,25 @@ class ModelLoader:
         model_path = os.path.join(model_dir, f'{model_name}_model.joblib')
         try:
             if not os.path.exists(model_path):
-                print(f"Model file for {model_name} not found at {model_path}")
+                print(f'Model file for {model_name} not found at {model_path}')
                 return None
             model = joblib.load(model_path)
-            print(f"Loaded {model_name} model from {model_path}")
+            print(f'Loaded {model_name} model from {model_path}')
             return model
-        except Exception as e:
-            print(f"Error loading {model_name} model: {e}")
+        except Exception as error:
+            print(f'Error loading {model_name} model: {error}')
             return None
+
 
 class ModelPredictor:
     @staticmethod
     def predict_emotion(text_input, model_object, components):
         if not components.are_fitted or not components.vectorizer:
-            return "Error: Model components not loaded."
+            return 'Error: Model components not loaded.'
 
         processed_text = TextPreprocessor.preprocess_text(str(text_input))
         if not processed_text:
-            return "Error: Empty or invalid text input."
+            return 'Error: Empty or invalid text input.'
 
         try:
             vectorized_text = components.vectorizer.transform([processed_text])
@@ -103,14 +108,15 @@ class ModelPredictor:
                     for emotion, prob in zip(components.label_encoder.classes_, prediction_proba)
                 }
             }
-        except Exception as e:
-            print(f"Prediction error: {e}")
-            return f"Error during prediction: {e}"
+        except Exception as error:
+            print(f'Prediction error: {error}')
+            return f'Error during prediction: {error}'
 
-# --- 3. FLASK APPLICATION SETUP ---
+
 app = Flask(__name__)
 active_model = None
 active_components = None
+
 
 def load_best_model_for_api():
     global active_model, active_components
@@ -121,18 +127,21 @@ def load_best_model_for_api():
         if model:
             active_model = model
             active_components = components
-            print("Successfully loaded SVM model and components.")
+            print('Successfully loaded SVM model and components.')
             return
 
-    print("Failed to load a working model or components. The API will not function.")
+    print('Failed to load a working model or components. The API will not function.')
+
 
 load_best_model_for_api()
 
-@app.route('/')
-def home():
-    return render_template('index.html')
 
-@app.route('/predict', methods=['POST'])
+@app.get('/health')
+def health():
+    return jsonify({'status': 'ok'}), 200
+
+
+@app.post('/predict')
 def predict():
     if active_model is None or active_components is None:
         return jsonify({'error': 'Model not loaded. Please check server logs.'}), 500
@@ -145,5 +154,9 @@ def predict():
 
     if isinstance(prediction_result, dict):
         return jsonify(prediction_result), 200
-    else:
-        return jsonify({'error': prediction_result}), 500
+    return jsonify({'error': prediction_result}), 500
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', '8000'))
+    app.run(host='0.0.0.0', port=port, debug=True)
