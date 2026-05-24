@@ -48,3 +48,5 @@ Recommended production start command for the ML service:
 ```bash
 gunicorn --bind 0.0.0.0:$PORT app:app
 ```
+
+The trained model artifacts were created with scikit-learn `1.6.1`. Keep the pinned dependency and Python runtime in `ml-service/` aligned with the model files to avoid pickle compatibility errors.
